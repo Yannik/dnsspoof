@@ -16,6 +16,8 @@ def arg_parser():
 def cb(payload):
     data = payload.get_data()
     pkt = IP(data)
+    # print packet
+    # pkt.show()
     if pkt.haslayer(DNSRR) and \
        pkt[DNS].an and \
        any(arg_parser().original == pkt[DNS].an[i].rdata for i in range(pkt[DNS].ancount)):

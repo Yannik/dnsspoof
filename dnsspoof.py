@@ -66,7 +66,7 @@ def main(args):
 
     # the response-packet will not pass through the nat table!
     # see this comment: https://superuser.com/questions/1210742/does-iptables-perform-a-automatically-snat-for-response-packet-if-it-does-when#comment1851968_1225093
-    os.system('iptables -t filter -I FORWARD 1 -p udp --dst 10.8.0.0/24 -j NFQUEUE --queue-num 10500')
+    os.system('iptables -t filter -I FORWARD 1 -p udp --sport 53 --dst 10.8.0.0/24 -j NFQUEUE --queue-num 10500')
 
     Queued()
     rctr = threading.Thread(target=reactor.run, args=(False,))
@@ -75,7 +75,7 @@ def main(args):
 
     def signal_handler(signal, frame):
         print('removing iptables rule and turning off IP forwarding...')
-        os.system('iptables -t filter -D FORWARD -p udp --dst 10.8.0.0/24 -j NFQUEUE --queue-num 10500')
+        os.system('iptables -t filter -D FORWARD -p udp --sport 53 --dst 10.8.0.0/24 -j NFQUEUE --queue-num 10500')
         sys.exit(0)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

